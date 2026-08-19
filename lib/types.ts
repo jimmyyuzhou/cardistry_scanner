@@ -16,6 +16,31 @@ export type SuggestedNextPhoto =
   | "seal"
   | null;
 
+export type ObjectType =
+  | "tuck_front"
+  | "tuck_back"
+  | "card_back"
+  | "card_face"
+  | "sealed_deck"
+  | "multiple_decks"
+  | "unknown"
+  | "no_deck";
+
+export type IdentificationLevel =
+  | "no_deck"
+  | "deck"
+  | "brand"
+  | "series"
+  | "edition"
+  | "variant";
+
+export type EvidenceKind =
+  | "visual"
+  | "text"
+  | "external"
+  | "reference_image"
+  | "user_confirmed";
+
 export type IdentifyErrorCode =
   | "missing_image"
   | "empty_image"
@@ -28,30 +53,49 @@ export type IdentifyErrorCode =
   | "timeout"
   | "unknown";
 
+export type FieldEvidence = {
+  kinds: EvidenceKind[];
+  summary: string | null;
+};
+
+export type Observation = {
+  visible_text: string[];
+  visible_logos_or_marks: string[];
+  visual_features: string[];
+  possible_logo_description: string | null;
+};
+
 export type DeckCandidate = {
   deck_name: string | null;
   brand: string | null;
   series: string | null;
-  version: string | null;
-  release_year: string | null;
-  designer_or_collaboration: string | null;
+  edition: string | null;
+  variant: string | null;
   why: string;
 };
 
 export type IdentificationFields = {
+  object_type: ObjectType;
+  identification_level: IdentificationLevel;
+  observation: Observation;
   deck_name: string | null;
   brand: string | null;
   series: string | null;
-  version: string | null;
+  edition: string | null;
+  variant: string | null;
+  designer: string | null;
+  collaborators: string[];
   release_year: string | null;
-  designer_or_collaboration: string | null;
-  visible_text: string[];
-  visual_features: string[];
+  brand_evidence: FieldEvidence;
+  series_evidence: FieldEvidence;
+  edition_evidence: FieldEvidence;
+  variant_evidence: FieldEvidence;
   confidence_level: ConfidenceLevel;
   reasoning_summary: string;
   alternative_candidates: DeckCandidate[];
   uncertainties: string[];
   suggested_next_photo: SuggestedNextPhoto;
+  message: string | null;
 };
 
 export type IdentifiedResult = IdentificationFields & {
@@ -64,18 +108,14 @@ export type AmbiguousResult = IdentificationFields & {
 
 export type UnknownResult = IdentificationFields & {
   status: "unknown";
-  message: string;
 };
 
-export type UnclearResult = {
+export type UnclearResult = IdentificationFields & {
   status: "unclear";
-  message: string;
-  suggested_next_photo: SuggestedNextPhoto;
 };
 
-export type InvalidResult = {
+export type InvalidResult = IdentificationFields & {
   status: "invalid";
-  message: string;
 };
 
 export type ErrorResult = {

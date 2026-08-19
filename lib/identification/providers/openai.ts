@@ -53,7 +53,7 @@ export async function identifyDeckWithOpenAI(input: {
             content: [
               {
                 type: "input_text",
-                text: "Analyze this photograph. The intended subject is a playing-card tuck box front. Determine validity, then identify the deck if responsible. Return the structured result only.",
+                text: "Observe this photograph first: object type, literal visible text, logos/marks, and visual features. Then interpret Brand / Series only as far as the image supports. Do not force an edition. Do not treat stylized logos as OCR. Return the structured result only.",
               },
               {
                 type: "input_image",
