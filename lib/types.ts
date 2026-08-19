@@ -1,4 +1,4 @@
-export type AppStep = "home" | "preview" | "analyzing" | "result";
+export type AppStep = "home" | "preview" | "crop" | "prepared" | "analyzing" | "result";
 
 export type ConfidenceLevel =
   | "confirmed"

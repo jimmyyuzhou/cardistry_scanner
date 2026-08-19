@@ -6,6 +6,7 @@ import { AnalyzingStatus } from "@/components/AnalyzingStatus";
 import { DeckPreview } from "@/components/DeckPreview";
 import { Header } from "@/components/Header";
 import { IdentificationResult } from "@/components/IdentificationResult";
+import { PhotoCropper } from "@/components/PhotoCropper";
 import { ScanFrame } from "@/components/ScanFrame";
 import { getClientUploadError, isImageFile } from "@/lib/image";
 import { ERROR_MESSAGES, errorResult } from "@/lib/identification/errors";
@@ -18,40 +19,56 @@ const IDENTIFY_CLIENT_TIMEOUT_MS = 50_000;
 
 export function ScannerApp() {
   const [step, setStep] = useState<AppStep>("home");
-  const [imageUrl, setImageUrl] = useState<string | null>(null);
-  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [originalUrl, setOriginalUrl] = useState<string | null>(null);
+  const [preparedFile, setPreparedFile] = useState<File | null>(null);
+  const [preparedUrl, setPreparedUrl] = useState<string | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
   const [result, setResult] = useState<DisplayResult | null>(null);
 
   const scanInputRef = useRef<HTMLInputElement>(null);
   const uploadInputRef = useRef<HTMLInputElement>(null);
-  const imageUrlRef = useRef<string | null>(null);
+  const originalUrlRef = useRef<string | null>(null);
+  const preparedUrlRef = useRef<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  function replaceImage(file: File | null) {
-    if (imageUrlRef.current) {
-      URL.revokeObjectURL(imageUrlRef.current);
+  function revokeUrl(url: string | null) {
+    if (url) {
+      URL.revokeObjectURL(url);
     }
+  }
+
+  function replaceOriginal(file: File | null) {
+    revokeUrl(originalUrlRef.current);
+    revokeUrl(preparedUrlRef.current);
+    preparedUrlRef.current = null;
 
     const nextUrl = file ? URL.createObjectURL(file) : null;
-    imageUrlRef.current = nextUrl;
-    setImageUrl(nextUrl);
-    setImageFile(file);
+    originalUrlRef.current = nextUrl;
+    setOriginalUrl(nextUrl);
+    setPreparedFile(null);
+    setPreparedUrl(null);
+  }
+
+  function replacePrepared(file: File) {
+    revokeUrl(preparedUrlRef.current);
+    const nextUrl = URL.createObjectURL(file);
+    preparedUrlRef.current = nextUrl;
+    setPreparedFile(file);
+    setPreparedUrl(nextUrl);
   }
 
   useEffect(() => {
     return () => {
       abortRef.current?.abort();
-      if (imageUrlRef.current) {
-        URL.revokeObjectURL(imageUrlRef.current);
-      }
+      revokeUrl(originalUrlRef.current);
+      revokeUrl(preparedUrlRef.current);
     };
   }, []);
 
   function resetToHome() {
     abortRef.current?.abort();
     abortRef.current = null;
-    replaceImage(null);
+    replaceOriginal(null);
     setStep("home");
     setFileError(null);
     setResult(null);
@@ -85,23 +102,36 @@ export function ScannerApp() {
 
     abortRef.current?.abort();
     abortRef.current = null;
-    replaceImage(file);
+    replaceOriginal(file);
     setFileError(null);
     setResult(null);
     setStep("preview");
   }
 
+  function handleCropConfirm(file: File) {
+    const uploadError = getClientUploadError(file);
+    if (uploadError) {
+      setFileError(uploadError);
+      setStep("crop");
+      return;
+    }
+
+    replacePrepared(file);
+    setFileError(null);
+    setStep("prepared");
+  }
+
   async function handleIdentify() {
-    if (!imageFile) {
+    if (!preparedFile) {
       setResult(errorResult("missing_image"));
       setStep("result");
       return;
     }
 
-    const uploadError = getClientUploadError(imageFile);
+    const uploadError = getClientUploadError(preparedFile);
     if (uploadError) {
       setFileError(uploadError);
-      setStep("preview");
+      setStep("prepared");
       return;
     }
 
@@ -119,7 +149,7 @@ export function ScannerApp() {
 
     try {
       const formData = new FormData();
-      formData.append("image", imageFile);
+      formData.append("image", preparedFile);
 
       const response = await fetch("/api/identify", {
         method: "POST",
@@ -206,12 +236,40 @@ export function ScannerApp() {
           </>
         ) : null}
 
-        {step === "preview" && imageUrl ? (
+        {step === "preview" && originalUrl ? (
           <>
-            <DeckPreview imageUrl={imageUrl} />
+            <DeckPreview imageUrl={originalUrl} />
+            <p className="mt-4 text-center text-[14px] leading-relaxed text-neutral-700">
+              Prepare the photo so the tuck box fills the frame.
+            </p>
+            <div className="mt-8 flex flex-col gap-3">
+              <ActionButton onClick={() => setStep("crop")}>
+                Prepare Photo
+              </ActionButton>
+              <ActionButton variant="ghost" onClick={resetToHome}>
+                Choose Another
+              </ActionButton>
+            </div>
+          </>
+        ) : null}
+
+        {step === "crop" && originalUrl ? (
+          <PhotoCropper
+            imageUrl={originalUrl}
+            onConfirm={handleCropConfirm}
+            onCancel={resetToHome}
+          />
+        ) : null}
+
+        {step === "prepared" && preparedUrl ? (
+          <>
+            <DeckPreview imageUrl={preparedUrl} caption="Prepared photo" />
             <div className="mt-8 flex flex-col gap-3">
               <ActionButton onClick={() => void handleIdentify()}>
                 Identify Deck
+              </ActionButton>
+              <ActionButton variant="secondary" onClick={() => setStep("crop")}>
+                Prepare Photo
               </ActionButton>
               <ActionButton variant="ghost" onClick={resetToHome}>
                 Choose Another
@@ -225,16 +283,16 @@ export function ScannerApp() {
           </>
         ) : null}
 
-        {step === "analyzing" && imageUrl ? (
+        {step === "analyzing" && preparedUrl ? (
           <>
-            <DeckPreview imageUrl={imageUrl} analyzing />
+            <DeckPreview imageUrl={preparedUrl} analyzing caption="Prepared photo" />
             <AnalyzingStatus />
           </>
         ) : null}
 
-        {step === "result" && imageUrl && result ? (
+        {step === "result" && preparedUrl && result ? (
           <>
-            <DeckPreview imageUrl={imageUrl} />
+            <DeckPreview imageUrl={preparedUrl} caption="Prepared photo" />
             <IdentificationResult result={result} />
             <div className="mt-10 flex flex-col gap-3">
               <ActionButton variant="secondary" onClick={resetToHome}>

@@ -1,9 +1,14 @@
 type DeckPreviewProps = {
   imageUrl: string;
   analyzing?: boolean;
+  caption?: string;
 };
 
-export function DeckPreview({ imageUrl, analyzing = false }: DeckPreviewProps) {
+export function DeckPreview({
+  imageUrl,
+  analyzing = false,
+  caption,
+}: DeckPreviewProps) {
   return (
     <figure className="relative mx-auto w-full max-w-[22rem]">
       <div className="border border-neutral-300 bg-neutral-100">
@@ -11,10 +16,15 @@ export function DeckPreview({ imageUrl, analyzing = false }: DeckPreviewProps) {
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={imageUrl}
-          alt="Selected deck photograph"
+          alt={caption ?? "Selected deck photograph"}
           className="mx-auto max-h-[58vh] w-full object-contain"
         />
       </div>
+      {caption ? (
+        <figcaption className="mt-3 text-center text-[11px] uppercase tracking-[0.2em] text-muted">
+          {caption}
+        </figcaption>
+      ) : null}
       {analyzing ? (
         <figcaption className="sr-only">Analyzing deck photograph</figcaption>
       ) : null}
