@@ -7,6 +7,8 @@ Status: Scope Frozen
 Product Type: Mobile-first Web App
 Primary Domain: Cardistry / Designer Playing Cards Identification
 
+Updated after first real V0.2 visual-identification tests.
+
 
 # 1. Product Purpose
 
@@ -16,13 +18,14 @@ Its core experience is:
 
 Scan. Identify. Understand.
 
-A user photographs a playing-card tuck box. The system uses visual AI, web research, and evidence evaluation to determine the most likely:
+A user photographs a playing-card tuck box. The system uses visual AI, web research, and evidence evaluation to determine the most likely exact deck entity, including:
 
+- Deck Name
 - Brand
 - Series
 - Version / Edition
 
-It then provides reliable basic information about the deck, explains why the identification was made, and shows supporting sources.
+It then provides reliable basic information about the deck, explains why the identification was made, shows supporting sources, and presents a trustworthy reference image so the user can visually compare their photograph with the identified deck.
 
 The primary V1 hypothesis is:
 
@@ -32,12 +35,24 @@ V1 does not need to identify every playing-card deck ever produced.
 
 Reliability is more important than apparent completeness.
 
+The user should be able to visually verify the identification, rather than being asked to trust the AI result blindly.
+
 
 # 2. V1 Scope
 
 V1 focuses on one task:
 
 Identify a playing-card deck as reliably as possible.
+
+V1 includes:
+
+- One-photo start from a Tuck Front photograph
+- Manual crop / prepare-photo before identification
+- Hierarchical identity: Brand → Series → Version / Edition → Deck Entity
+- English and Simplified Chinese UI
+- A trustworthy reference image of the identified deck when one can be found
+- Web research and evidence evaluation
+- Progressive additional photographs when needed
 
 V1 does NOT include:
 
@@ -53,10 +68,11 @@ V1 does NOT include:
 - Built-in user feedback system
 - Social features
 - A proprietary local playing-card reference database
+- Automatic object detection or automatic cropping
 - Native iOS app
 - Native Android app
 
-eBay and other marketplaces may still be used as identification evidence, but V1 does not provide valuation or market-price functionality.
+eBay and other marketplaces may still be used as identification evidence or as a last-resort reference-image source, but V1 does not provide valuation or market-price functionality.
 
 
 # 3. Primary Input
@@ -69,13 +85,12 @@ The only required input is:
 
 One photograph of the front of the playing-card tuck box.
 
-The user should be able to begin identification immediately after taking this photograph.
+The user should be able to begin identification after taking this photograph and preparing it if needed.
 
 The image does not need:
 
 - A professional background
 - Studio lighting
-- Perfect cropping
 - A scanner
 - A perfectly isolated tuck box
 
@@ -83,14 +98,49 @@ The system should tolerate normal real-world photographs, including hands, table
 
 The tuck box should ideally be sufficiently visible to analyze.
 
+A valid deck may still be difficult to identify when it occupies only a small part of the frame. The product should therefore help the user prepare the photograph so the tuck box occupies the main portion of the image used for identification.
 
-# 4. Input Validity Check
+
+# 4. Photo Preparation / Cropping
+
+After a user selects or captures a photo, the user should be able to crop the image so the playing-card tuck box occupies the main portion of the frame.
+
+This is a V1 product requirement.
+
+The intended flow is:
+
+Capture / Upload
+↓
+Preview
+↓
+Crop / Adjust
+↓
+Identify
+
+The crop step should be lightweight and mobile-friendly.
+
+Do not require professional-quality framing.
+
+The product should encourage the user to make the tuck box the dominant object in the final identification image.
+
+The crop / prepare-photo step is part of the default flow. If the photograph is already well framed, confirming the existing crop should be easy. The user should not be blocked from identification solely because they decline extensive adjustment.
+
+The original photo may be retained for the current session if useful, but the identification pipeline should use the prepared / cropped image.
+
+V1 does NOT require automatic object detection or automatic cropping. Manual crop is sufficient.
+
+The scan frame should clearly guide the user to place the tuck box inside the frame at capture time. Cropping remains available afterward when the captured image still leaves the deck too small or too peripheral.
+
+
+# 5. Input Validity Check
 
 Before performing full identification or web research, the system must first determine whether the submitted image plausibly contains a playing-card deck, tuck box, or other sufficiently relevant playing-card object.
 
 This should be a fast preliminary validation step.
 
 Its purpose is to prevent unnecessary research, latency, API usage, and hallucinated identifications.
+
+A small deck in a complex background remains a valid input. Validity and identifiability are different questions. An image may contain a real deck and still be insufficient for a responsible identification until the user crops closer or provides another photograph.
 
 
 ## Valid Input
@@ -153,13 +203,15 @@ Return:
 
 "Try taking a closer photo of the tuck box."
 
+When a deck is visible but too small, distant, or peripheral in the frame, prefer Unclear or Unknown over a guessed identity, and encourage cropping or a closer Tuck Front photograph.
+
 The system must distinguish between:
 
 - No deck present
 - A deck may be present, but the image is insufficient
 
 
-# 5. Optional Additional Images
+# 6. Optional Additional Images
 
 Additional images are NOT required initially.
 
@@ -228,7 +280,7 @@ These should only be requested when genuinely useful.
 The system must NEVER ask a user to open a sealed deck simply to improve identification.
 
 
-# 6. Progressive Identification
+# 7. Progressive Identification
 
 V1 follows a progressive evidence model.
 
@@ -238,9 +290,17 @@ Default flow:
 
 Tuck Front
 ↓
+Crop / Prepare Photo
+↓
 Visual Analysis
 ↓
+Candidate Generation
+↓
+Entity Resolution
+↓
 Research
+↓
+Reference Verification
 ↓
 Evidence Evaluation
 
@@ -269,6 +329,7 @@ The new image becomes part of the SAME identification session.
 The system should reconsider the identification using:
 
 - Original photograph
+- Prepared / cropped photograph
 - Additional photograph
 - Previous candidates
 - Previous research
@@ -277,7 +338,7 @@ The system should reconsider the identification using:
 It should not unnecessarily restart the entire user experience.
 
 
-# 7. Optional User Hint
+# 8. Optional User Hint
 
 The user may optionally provide:
 
@@ -298,11 +359,13 @@ User-provided information is a HINT, not verified evidence.
 The system must not allow the hint to override contradictory visual or external evidence.
 
 
-# 8. Primary Identification Result
+# 9. Primary Identification Result
 
 The first result screen should immediately answer:
 
 "What deck is this?"
+
+The primary answer is the canonical deck entity, not a set of disconnected OCR labels.
 
 Example:
 
@@ -314,17 +377,81 @@ HIGH CONFIDENCE
 
 Detailed information appears below.
 
-The deck photograph should remain a major visual element of the result screen.
+The user's photograph should remain a major visual element of the result screen.
+
+A successful identification should also show a trustworthy reference image of the identified deck so the user can visually compare:
+
+User Photo
+vs.
+Reference Image
+
+The user should be able to visually verify the identification, rather than being asked to trust the AI result blindly.
 
 
-# 9. Identity Information
+# 10. Identity Information
+
+Playing-card identity is hierarchical.
+
+Brand
+↓
+Series
+↓
+Version / Edition
+↓
+Deck Entity
+
+The exact deck entity is the primary identification target.
+
+The system should determine the most likely canonical deck entity first, then populate supporting metadata fields consistently.
+
+Recommended conceptual hierarchy:
+
+deck_name
+brand
+series
+version
+
+Example:
+
+Deck Name:
+Fontaine × Carrots V2
+
+Brand:
+Fontaine
+
+Series:
+Carrots
+
+Version:
+V2
+
+The system must prefer a coherent known deck entity over independently guessed metadata fields.
+
+Brand and Series are hierarchical identity fields, not independent OCR labels.
+
+A brand name appearing on the tuck box does not automatically define the series.
+
+The system must NOT infer:
+
+Brand = Fontaine
+Series = Fontaine
+
+merely because the word "Fontaine" appears prominently on the packaging.
+
+Series should be supported by independent visual evidence and/or reliable external evidence.
 
 When reliably available, return:
 
 
 ## Deck Name
 
-Full commonly accepted name.
+Full commonly accepted name of the exact deck entity.
+
+This is a first-class identity field.
+
+Example:
+
+Fontaine × Carrots V2
 
 
 ## Brand
@@ -339,6 +466,8 @@ Fontaine
 Example:
 
 Carrots
+
+Series must not be copied from Brand unless the series is independently that name.
 
 
 ## Version / Edition
@@ -374,8 +503,51 @@ or omitted when appropriate.
 
 The system must NEVER invent metadata simply to make the result page appear complete.
 
+The final deck identity must be internally consistent. The system should not produce:
 
-# 10. Production Information
+Deck Name: Fontaine × Carrots V2
+Brand: Fontaine
+Series: Fontaine
+Version: V2
+
+if the canonical relationship is known to be:
+
+Fontaine → Carrots → V2
+
+
+# 11. Entity Consistency
+
+The final result must be checked for logical consistency between:
+
+- Deck Name
+- Brand
+- Series
+- Version / Edition
+- Designer / Collaboration
+- Reference image, when shown
+
+Examples of invalid results:
+
+- Brand and Series both set to the same brand name without independent series evidence
+- Deck Name contradicts Brand
+- Version belongs to a different Series
+- Designer / collaboration contradicts the identified deck
+- Reference image does not match the proposed deck entity
+
+If internal consistency cannot be established, the system should lower confidence or return AMBIGUOUS / UNKNOWN rather than presenting a confident identification.
+
+A correct Brand with an incorrect Series is still a partially incorrect identification.
+
+Example:
+
+Brand: Fontaine
+Series: Fontaine
+Version: unknown
+
+must NOT be treated as a correct exact identification of a known Fontaine collaboration deck such as Fontaine × Carrots V2.
+
+
+# 12. Production Information
 
 When supported by reliable sources, return:
 
@@ -429,7 +601,7 @@ Possible states:
 If production information differs by batch or cannot be verified, the system should explicitly communicate that uncertainty.
 
 
-# 11. Classification
+# 13. Classification
 
 The system may provide simple descriptive classifications such as:
 
@@ -448,7 +620,7 @@ These labels exist to help users understand the general purpose and cultural pos
 They are not intended as rigid academic categories.
 
 
-# 12. About This Deck
+# 14. About This Deck
 
 V1 should provide a concise contextual explanation of the identified deck.
 
@@ -477,7 +649,7 @@ This section must distinguish between:
 Subjective collector opinion should not be presented as objective fact.
 
 
-# 13. Identification Confidence
+# 15. Identification Confidence
 
 V1 should not overemphasize artificially precise numerical confidence scores.
 
@@ -513,8 +685,10 @@ Numerical confidence scores may be used internally.
 
 V1 should not prominently expose exact percentages until the system has undergone meaningful benchmarking and confidence calibration.
 
+Inconsistent identity fields must not be presented as Confirmed or High Confidence.
 
-# 14. Alternative Matches
+
+# 16. Alternative Matches
 
 The system must not force a single identification when multiple plausible candidates remain.
 
@@ -538,8 +712,10 @@ And suggest the most useful next action:
 
 Alternative candidates should be ranked according to evidence strength, not merely listed randomly.
 
+Each alternative should also be a coherent deck entity, not a disconnected set of OCR labels.
 
-# 15. Unknown Is a Valid Result
+
+# 17. Unknown Is a Valid Result
 
 Failure to identify a deck confidently is an acceptable product outcome.
 
@@ -558,36 +734,56 @@ Example:
 The system must NEVER guess simply to create the appearance of success.
 
 
-# 16. Research and Evidence Model
+# 18. Research and Evidence Model
 
 The identification pipeline should conceptually follow:
 
 User Photo
 ↓
+Crop / Prepare Photo
+↓
 Input Validity Check
 ↓
-Visual Analysis
+Visual Evidence
 ↓
 Candidate Generation
 ↓
+Entity Resolution
+↓
 Web Research
+↓
+Reference Verification
 ↓
 Evidence Evaluation
 ↓
 Final Identification
 
+This is distinct from a vision-only shortcut of:
+
+Image
+↓
+Vision Model
+↓
+Answer
+
+V0.2 remains vision-only and does not perform web research.
+
+V1 research architecture must support entity resolution and reference verification, not merely free-form field extraction from a photograph.
 
 AI acts as:
 
 - Visual observer
 - Search planner
+- Entity resolver
 - Evidence synthesizer
 - Final reasoner
 
 AI should NOT treat its own prior output as independent evidence.
 
+Visible words on a tuck box are evidence, not a complete identity model. Extracting the most prominent printed word into both Brand and Series is not acceptable entity resolution.
 
-# 17. Source Priority
+
+# 19. Source Priority
 
 Sources should be weighted according to reliability.
 
@@ -602,6 +798,7 @@ Examples:
 - Designer websites
 - Official release archives
 - Official product announcements
+- Official product pages
 
 
 ## Tier 2 — Established Playing-Card Resources
@@ -630,6 +827,8 @@ Market evidence is primarily useful for:
 
 V1 does not use this tier for market valuation.
 
+Reputable specialist retailers outrank generic marketplace images when choosing a visual reference.
+
 
 ## Tier 4 — Community Sources
 
@@ -652,7 +851,7 @@ Examples include poorly documented reseller listings or marketplace descriptions
 These should not independently determine an identification.
 
 
-# 18. Evidence Independence
+# 20. Evidence Independence
 
 Multiple search results do not necessarily represent multiple independent pieces of evidence.
 
@@ -672,7 +871,7 @@ The system should consider:
 Evidence quality matters more than raw result count.
 
 
-# 19. Why This Match?
+# 21. Why This Match?
 
 Every successful identification should allow the user to understand the reasoning.
 
@@ -695,8 +894,10 @@ Remaining uncertainty:
 
 This feature exists to make identification inspectable rather than magical.
 
+Visual comparison with a reference image is part of this inspectability.
 
-# 20. Sources
+
+# 22. Sources
 
 Identification results should expose the external sources used to support important factual claims.
 
@@ -719,13 +920,118 @@ Observe → Search → Compare → Evaluate → Summarize
 Factual claims should ultimately be grounded in external evidence whenever reasonably possible.
 
 
-# 21. V1 User Flow
+# 23. Reference Image
+
+A successful identification should not only provide text metadata.
+
+It should also show a trustworthy reference image of the identified deck so that the user can visually compare:
+
+User Photo
+vs.
+Reference Image
+
+The reference image must correspond to the identified deck / version as closely as possible.
+
+The system should NOT display a generic image of the brand or series when the exact identified version is known.
+
+If a trustworthy exact-version reference image cannot be found, say so instead of presenting a misleading image.
+
+The reference image should be accompanied by its source.
+
+Example:
+
+Reference Image
+Fontaine — Official
+View Source
+
+Preferred source order for the reference image:
+
+1. Official brand website / official product page
+2. Official release archive / designer website
+3. Established playing-card archive / collector database
+4. Reputable specialist retailer
+5. Marketplace or secondary-market image only when higher-quality sources are unavailable
+
+A reference image that does not match the proposed deck entity is a consistency failure. In that case, omit the image or lower confidence rather than showing a misleading picture.
+
+
+# 24. Localization
+
+The entire application should support:
+
+- English
+- Simplified Chinese
+
+Provide a visible language switcher.
+
+The UI language should be user-selectable and should not depend exclusively on browser language.
+
+The system may use browser language as an initial default, but the user must be able to switch manually.
+
+Localization must cover the application UI, including:
+
+- Home screen
+- Scan actions
+- Upload actions
+- Crop / prepare-photo UI
+- Analyzing state
+- Identification result
+- Confidence labels
+- Error messages
+- Invalid / unclear messages
+- Suggested next-photo guidance
+- Reference-image section
+- Sources
+- Any future V1 UI copy
+
+
+## Canonical Names
+
+Playing-card brand names and series names should NOT be forcibly translated into Chinese.
+
+Use the canonical / original names used by the brand and the playing-card community.
+
+Examples:
+
+English UI:
+Brand: Bicycle
+Series: Rider Back
+
+Simplified Chinese UI:
+品牌：Bicycle
+系列：Rider Back
+
+NOT:
+
+品牌：自行车
+
+Likewise, names such as:
+
+Fontaine
+Carrots
+Anyone
+Virtuoso
+Orbit
+Dealersgrip
+
+should remain in their canonical / original form.
+
+If a brand or series has an official Chinese name, that may be used when appropriate, but the canonical / original name should remain available.
+
+The underlying metadata should preserve canonical names independent of UI language.
+
+Changing UI language must NOT change the stored identity of the deck.
+
+
+# 25. V1 User Flow
 
 OPEN
 ↓
-SCAN DECK
+SCAN DECK / UPLOAD PHOTO
 ↓
 TUCK FRONT
+↓
+CROP / PREPARE PHOTO
 ↓
 INPUT VALIDITY CHECK
 
@@ -741,7 +1047,11 @@ VISUAL ANALYSIS
 ↓
 CANDIDATE GENERATION
 ↓
+ENTITY RESOLUTION
+↓
 WEB RESEARCH
+↓
+REFERENCE VERIFICATION
 ↓
 EVIDENCE EVALUATION
 
@@ -750,6 +1060,7 @@ Then either:
 MATCH
 ↓
 RESULT
+including user photo, identity fields, and reference image when available
 
 or:
 
@@ -769,10 +1080,12 @@ Final action:
 
 SCAN ANOTHER DECK
 
+Language may be switched at any point without restarting identification or changing the stored deck identity.
+
 There is NO Add to Collection action in V1.
 
 
-# 22. Camera and Platform
+# 26. Camera and Platform
 
 V1 is a mobile-first Web App.
 
@@ -780,7 +1093,11 @@ The product should work through modern mobile browsers.
 
 Initial camera implementation may use the device's native capture/file-input behavior.
 
+The scan frame should clearly guide the user to place the tuck box inside the frame.
+
 A custom real-time camera scanner interface is optional and NOT required for V1.
+
+Automatic object detection and automatic cropping are NOT required for V1.
 
 Production deployment should use HTTPS so browser camera permissions function correctly.
 
@@ -792,7 +1109,7 @@ V1 does not require:
 - Native mobile installation
 
 
-# 23. V1 Beta Strategy
+# 27. V1 Beta Strategy
 
 V1 should be deployable as a shareable HTTPS Web App.
 
@@ -806,10 +1123,12 @@ Important categories include:
 - Major Cardistry brands
 - Standard playing cards
 - Designer decks
+- Collaboration decks
 - Similar colorways
 - Multiple editions of the same series
 - Obscure decks
 - Difficult photographs
+- Deck occupying a small portion of the frame
 - Invalid/non-deck photographs
 
 The purpose is to discover failure modes.
@@ -828,11 +1147,15 @@ Important questions include:
 - Was the Brand correct?
 - Was the Series correct?
 - Was the exact Version correct?
+- Was the deck entity internally consistent?
+- Did the reference image match the identified deck / version?
 - Was additional-photo guidance useful?
 - Were the sources convincing?
 - Did the system admit uncertainty appropriately?
 - Was identification fast enough?
 - Was the result useful?
+- Was crop / prepare-photo useful?
+- Was the language switcher usable?
 
 
 ## Stage 3 — Community Beta
@@ -840,7 +1163,7 @@ Important questions include:
 Only after Private Beta results are understood should broader Cardistry-community testing be considered.
 
 
-# 24. V1 Success Criteria
+# 28. V1 Success Criteria
 
 V1 success does NOT mean:
 
@@ -848,11 +1171,39 @@ V1 success does NOT mean:
 
 V1 succeeds if:
 
-For Cardistry and designer decks with reasonable internet documentation, a user can normally begin with one Tuck Front photograph, the system can often identify the Brand and Series, can identify the exact Version when sufficient evidence exists, and knows when to request additional evidence instead of guessing.
+For Cardistry and designer decks with reasonable internet documentation, a user can normally begin with one Tuck Front photograph, optionally crop it so the tuck box dominates the frame, the system can often identify the Brand and Series, can identify the exact Version when sufficient evidence exists, can present a coherent deck entity, can show a trustworthy reference image when one is available, and knows when to request additional evidence instead of guessing.
 
 Additionally:
 
 Obviously irrelevant photographs should be rejected quickly without triggering the expensive research pipeline.
+
+A result is not considered fully correct merely because the Brand is correct.
+
+Evaluation should separately track:
+
+1. Brand accuracy
+2. Series accuracy
+3. Version accuracy
+4. Entity consistency
+5. Reference-image match
+
+Also continue evaluating:
+
+- Invalid-image rejection
+- Unclear-image detection
+- Appropriate use of Ambiguous / Unknown
+- Hallucination rate
+- Whether additional-photo guidance is useful
+
+Example of a result that is not a correct exact identification:
+
+Brand: Fontaine
+Series: Fontaine
+Version: unknown
+
+when the photographed object is a known Fontaine collaboration deck.
+
+The exact entity hierarchy matters.
 
 The system should optimize for:
 
@@ -863,7 +1214,7 @@ and:
 Useful uncertainty > confident hallucination
 
 
-# 25. Product Principles
+# 29. Product Principles
 
 These principles govern all V1 development decisions.
 
@@ -918,12 +1269,47 @@ Historical context is valuable, but AI interpretation must not masquerade as ver
 Do not allow collection management, valuation, social features, or unrelated functionality to dilute the core product.
 
 
+## 11. Prepare the image before asking the model to identify it.
+
+Help the user make the tuck box the dominant object in the identification image.
+
+
+## 12. Show the user a trustworthy visual reference after identification whenever one is available.
+
+The user should be able to compare their photo with a source-backed reference image.
+
+
+## 13. Preserve canonical brand and series names across language settings.
+
+Do not forcibly translate brand or series names. Changing UI language must not change deck identity.
+
+
+## 14. Brand, Series, Version, and Deck are related identity entities, not independent OCR fields.
+
+A brand name printed on the tuck box is not automatically the series.
+
+
+## 15. The system should identify a coherent deck entity before filling secondary metadata.
+
+Prefer a consistent known deck over independently guessed fields.
+
+
+## 16. A correct Brand with an incorrect Series is still a partially incorrect identification.
+
+Brand-only correctness is not exact-entity correctness.
+
+
+## 17. Visual verification should be part of user trust, not an afterthought.
+
+Text metadata without a matching reference image asks the user to trust the model blindly.
+
+
 ==================================================
 V1 PRODUCT DEFINITION
 ==================================================
 
 Cardistry Scanner V1:
 
-Take a photo of a playing-card deck you don't recognize. Cardistry Scanner identifies the most likely exact deck, researches its basic information, shows the evidence behind the identification, and asks for additional visual evidence when the answer cannot yet be determined reliably.
+Take a photo of a playing-card deck you don't recognize. Crop it so the tuck box is clearly visible. Cardistry Scanner identifies the most likely exact deck entity, researches its basic information, shows a trustworthy reference image and the evidence behind the identification, and asks for additional visual evidence when the answer cannot yet be determined reliably.
 
 Scan. Identify. Understand.
