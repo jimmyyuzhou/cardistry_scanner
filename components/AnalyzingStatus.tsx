@@ -10,7 +10,7 @@ export function AnalyzingStatus() {
         Analyzing deck
       </p>
       <div className="mx-auto mt-4 h-px w-24 overflow-hidden bg-neutral-200">
-        <div className="h-full origin-left bg-foreground animate-analyze" />
+        <div className="h-full w-1/3 bg-foreground animate-analyze" />
       </div>
     </div>
   );
