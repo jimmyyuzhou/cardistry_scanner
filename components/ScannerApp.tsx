@@ -10,12 +10,27 @@ import { PhotoCropper } from "@/components/PhotoCropper";
 import { ScanFrame } from "@/components/ScanFrame";
 import { getClientUploadError, isImageFile } from "@/lib/image";
 import { ERROR_MESSAGES, errorResult } from "@/lib/identification/errors";
-import type { AppStep, DisplayResult, IdentifyErrorCode, IdentifyResponse } from "@/lib/types";
+import { isResearchEligible } from "@/lib/research/eligibility";
+import {
+  beginResearch,
+  completeResearch,
+  createScanView,
+  failResearch,
+  type ScanResearchView,
+} from "@/lib/research/client-state";
+import type {
+  AppStep,
+  DisplayResult,
+  IdentifyErrorCode,
+  IdentifyResponse,
+  ResearchResponse,
+} from "@/lib/types";
 
 const ACCEPT =
   "image/jpeg,image/png,image/webp,image/gif,image/heic,image/heif,image/avif,.jpg,.jpeg,.png,.webp,.gif,.heic,.heif,.avif";
 
 const IDENTIFY_CLIENT_TIMEOUT_MS = 50_000;
+const RESEARCH_CLIENT_TIMEOUT_MS = 80_000;
 
 export function ScannerApp() {
   const [step, setStep] = useState<AppStep>("home");
@@ -24,6 +39,7 @@ export function ScannerApp() {
   const [preparedUrl, setPreparedUrl] = useState<string | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
   const [result, setResult] = useState<DisplayResult | null>(null);
+  const [scanView, setScanView] = useState<ScanResearchView | null>(null);
 
   const scanInputRef = useRef<HTMLInputElement>(null);
   const uploadInputRef = useRef<HTMLInputElement>(null);
@@ -72,6 +88,7 @@ export function ScannerApp() {
     setStep("home");
     setFileError(null);
     setResult(null);
+    setScanView(null);
 
     if (scanInputRef.current) {
       scanInputRef.current.value = "";
@@ -105,6 +122,7 @@ export function ScannerApp() {
     replaceOriginal(file);
     setFileError(null);
     setResult(null);
+    setScanView(null);
     setStep("preview");
   }
 
@@ -145,6 +163,7 @@ export function ScannerApp() {
     }, IDENTIFY_CLIENT_TIMEOUT_MS);
 
     setResult(null);
+    setScanView(null);
     setStep("analyzing");
 
     try {
@@ -167,7 +186,18 @@ export function ScannerApp() {
       }
 
       setResult(payload.result);
+      if (payload.ok) {
+        setScanView(createScanView(payload.result));
+      } else {
+        setScanView(null);
+      }
       setStep("result");
+      window.clearTimeout(timeout);
+
+      if (payload.ok && isResearchEligible(payload.result)) {
+        await runResearch(payload.result, controller);
+      }
+      return;
     } catch (error) {
       if (abortRef.current !== controller) {
         return;
@@ -184,6 +214,77 @@ export function ScannerApp() {
       });
       setResult(errorResult("unknown"));
       setStep("result");
+    } finally {
+      window.clearTimeout(timeout);
+    }
+  }
+
+  async function runResearch(
+    vision: Exclude<DisplayResult, { status: "error" }>,
+    previousController: AbortController,
+  ) {
+    if (abortRef.current !== previousController) {
+      return;
+    }
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+    let timedOut = false;
+    const timeout = window.setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, RESEARCH_CLIENT_TIMEOUT_MS);
+
+    setScanView((current) => (current ? beginResearch(current) : current));
+
+    try {
+      const response = await fetch("/api/research", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ vision }),
+        signal: controller.signal,
+      });
+
+      const payload = await parseResearchResponse(response);
+
+      if (abortRef.current !== controller) {
+        return;
+      }
+
+      if (!payload || payload.ok === false) {
+        setScanView((current) => (current ? failResearch(current) : current));
+        return;
+      }
+
+      if (payload.research.skipped_reason) {
+        setScanView((current) =>
+          current
+            ? { ...current, researchState: "not_started", researchResult: null }
+            : current,
+        );
+        return;
+      }
+
+      if (payload.research.status === "failed") {
+        setScanView((current) => (current ? failResearch(current) : current));
+        return;
+      }
+
+      setScanView((current) =>
+        current ? completeResearch(current, payload.research) : current,
+      );
+    } catch (error) {
+      if (abortRef.current !== controller) {
+        return;
+      }
+      if (timedOut || controller.signal.aborted) {
+        setScanView((current) => (current ? failResearch(current) : current));
+        return;
+      }
+      console.error("Research request failed", {
+        name: error instanceof Error ? error.name : "unknown",
+      });
+      setScanView((current) => (current ? failResearch(current) : current));
     } finally {
       window.clearTimeout(timeout);
     }
@@ -293,7 +394,11 @@ export function ScannerApp() {
         {step === "result" && preparedUrl && result ? (
           <>
             <DeckPreview imageUrl={preparedUrl} caption="Prepared photo" />
-            <IdentificationResult result={result} />
+            <IdentificationResult
+              visionResult={scanView?.visionResult ?? result}
+              researchState={scanView?.researchState}
+              researchResult={scanView?.researchResult}
+            />
             <div className="mt-10 flex flex-col gap-3">
               <ActionButton variant="secondary" onClick={resetToHome}>
                 Scan Another Deck
@@ -346,6 +451,42 @@ async function parseIdentifyResponse(
 
 function isIdentifyErrorCode(value: string): value is IdentifyErrorCode {
   return Object.hasOwn(ERROR_MESSAGES, value);
+}
+
+async function parseResearchResponse(
+  response: Response,
+): Promise<ResearchResponse | null> {
+  try {
+    const payload: unknown = await response.json();
+    if (!isRecord(payload) || typeof payload.ok !== "boolean") {
+      return null;
+    }
+
+    if (payload.ok === false) {
+      if (typeof payload.error_code !== "string") {
+        return null;
+      }
+      return {
+        ok: false,
+        error_code:
+          payload.error_code === "missing_vision" ||
+          payload.error_code === "research_unconfigured" ||
+          payload.error_code === "research_timeout" ||
+          payload.error_code === "research_unavailable"
+            ? payload.error_code
+            : "research_unavailable",
+        research_status: "failed",
+      };
+    }
+
+    if (!isRecord(payload.research) || typeof payload.research.status !== "string") {
+      return null;
+    }
+
+    return payload as ResearchResponse;
+  } catch {
+    return null;
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -1,13 +1,27 @@
+"use client";
+
+import { useState } from "react";
 import type {
   DisplayResult,
   IdentificationFields,
   IdentificationLevel,
+  IdentificationResult as IdentificationResultType,
   ObjectType,
+  ResearchResultPayload,
   SuggestedNextPhoto,
 } from "@/lib/types";
+import {
+  researchAddsResolvedFields,
+  type ResearchUiState,
+} from "@/lib/research/client-state";
+import { deriveEditionStatus, editionDisplayValue } from "@/lib/research/edition-status";
+import { selectDisplaySources } from "@/lib/research/display-sources";
+import { formatCanonicalName } from "@/lib/research/names";
 
 type IdentificationResultProps = {
-  result: DisplayResult;
+  visionResult: DisplayResult;
+  researchState?: ResearchUiState;
+  researchResult?: ResearchResultPayload | null;
 };
 
 const CONFIDENCE_LABELS = {
@@ -47,96 +61,81 @@ const NEXT_PHOTO_LABELS: Record<Exclude<SuggestedNextPhoto, null>, string> = {
   seal: "Seal",
 };
 
-export function IdentificationResult({ result }: IdentificationResultProps) {
-  if (result.status === "error") {
+export function IdentificationResult({
+  visionResult,
+  researchState = "not_started",
+  researchResult = null,
+}: IdentificationResultProps) {
+  if (visionResult.status === "error") {
     return (
-      <ResultShell title="Identification failed" message={result.message} />
+      <ResultShell title="Identification failed" message={visionResult.message} />
     );
   }
 
-  if (result.status === "invalid") {
+  if (visionResult.status === "invalid") {
     return (
       <ResultShell
         title="No playing-card deck detected"
-        message={result.message ?? "No playing-card deck detected."}
+        message={visionResult.message ?? "No playing-card deck detected."}
         detail="Try photographing the front of the tuck box."
       />
     );
   }
 
-  if (result.status === "unclear") {
+  if (visionResult.status === "unclear") {
     return (
       <ResultShell
         title="Deck not clearly visible"
-        message={result.message ?? "Deck not clearly visible."}
-        nextPhoto={result.suggested_next_photo}
-        objectType={result.object_type}
+        message={visionResult.message ?? "Deck not clearly visible."}
+        nextPhoto={visionResult.suggested_next_photo}
+        objectType={visionResult.object_type}
       />
     );
   }
 
-  if (result.status === "unknown") {
-    return (
-      <section aria-labelledby="identification-heading" className="mt-8">
-        <StatusHeading
-          title="Unable to identify this deck reliably"
-          statusLabel={LEVEL_LABELS[result.identification_level]}
-        />
-        <p className="mt-3 text-[15px] leading-relaxed text-neutral-700">
-          {result.message ?? "A playing-card object is visible, but identity is unresolved."}
-        </p>
-        <ObjectTypeNote objectType={result.object_type} />
-        <IdentificationDetails result={result} />
-      </section>
-    );
-  }
-
-  if (result.status === "ambiguous") {
-    const title =
-      result.deck_name ??
-      joinIdentity(result.brand, result.series, result.edition) ??
-      "More than one match is possible";
-
-    return (
-      <section aria-labelledby="identification-heading" className="mt-8">
-        <StatusHeading title={title} statusLabel="Ambiguous" />
-        <p className="mt-3 text-[15px] leading-relaxed text-neutral-700">
-          {result.message ??
-            "Several identities remain plausible. A single exact match was not forced."}
-        </p>
-        <ObjectTypeNote objectType={result.object_type} />
-        <IdentificationDetails result={result} />
-      </section>
-    );
-  }
-
-  const title =
-    result.deck_name ??
-    joinIdentity(result.brand, result.series, result.edition) ??
-    "Identified deck";
+  const title = visionTitle(visionResult);
 
   return (
     <section aria-labelledby="identification-heading" className="mt-8">
-      <StatusHeading
-        title={title}
-        statusLabel={LEVEL_LABELS[result.identification_level]}
-      />
-      {result.message ? (
+      <StatusHeading title={title} statusLabel="Vision identification" />
+      {visionResult.status === "unknown" ? (
         <p className="mt-3 text-[15px] leading-relaxed text-neutral-700">
-          {result.message}
+          {visionResult.message ?? "A playing-card object is visible, but identity is unresolved."}
+        </p>
+      ) : visionResult.status === "ambiguous" ? (
+        <p className="mt-3 text-[15px] leading-relaxed text-neutral-700">
+          {visionResult.message ??
+            "Several identities remain plausible. A single exact match was not forced."}
+        </p>
+      ) : visionResult.message ? (
+        <p className="mt-3 text-[15px] leading-relaxed text-neutral-700">
+          {visionResult.message}
         </p>
       ) : null}
-      <ObjectTypeNote objectType={result.object_type} />
-      <IdentificationDetails result={result} />
+      <ObjectTypeNote objectType={visionResult.object_type} />
+      <IdentificationDetails result={visionResult} researchResult={researchResult} />
+      <ResearchPanel
+        visionResult={visionResult}
+        researchState={researchState}
+        researchResult={researchResult}
+      />
     </section>
   );
 }
 
-function IdentificationDetails({ result }: { result: IdentificationFields }) {
-  const editionValue =
-    result.identification_level === "series" && !result.edition
-      ? "Unresolved"
-      : result.edition;
+function IdentificationDetails({
+  result,
+  researchResult,
+}: {
+  result: IdentificationResultType;
+  researchResult?: ResearchResultPayload | null;
+}) {
+  const editionStatus = deriveEditionStatus({
+    vision: result,
+    candidates: researchResult?.candidates,
+    researchComplete: researchResult?.status !== undefined && researchResult.status !== "failed",
+  });
+  const editionValue = editionDisplayValue(result, editionStatus);
 
   const fields = [
     ["Object", OBJECT_TYPE_LABELS[result.object_type]],
@@ -329,13 +328,13 @@ function AlternativeList({
   return (
     <div className="mt-7">
       <h3 className="text-[11px] uppercase tracking-[0.2em] text-muted">
-        Candidates
+        Vision candidates
       </h3>
       <ul className="mt-3 space-y-4">
         {candidates.map((candidate, index) => {
           const label =
             candidate.deck_name ??
-            joinIdentity(candidate.brand, candidate.series, candidate.edition) ??
+            identityLabel(candidate.brand, candidate.series, candidate.edition, candidate.variant) ??
             `Candidate ${index + 1}`;
 
           return (
@@ -364,11 +363,202 @@ function NextPhotoNote({ photo }: { photo: SuggestedNextPhoto }) {
   );
 }
 
-function joinIdentity(
+function ResearchPanel({
+  visionResult,
+  researchState,
+  researchResult,
+}: {
+  visionResult: IdentificationResultType;
+  researchState: ResearchUiState;
+  researchResult: ResearchResultPayload | null;
+}) {
+  if (researchState === "not_started") {
+    return null;
+  }
+
+  if (researchState === "researching") {
+    return (
+      <div className="mt-8" role="status" aria-live="polite">
+        <h3 className="text-[11px] uppercase tracking-[0.2em] text-muted">
+          Research
+        </h3>
+        <p className="mt-3 text-[14px] leading-relaxed text-neutral-700">
+          Researching sources…
+        </p>
+      </div>
+    );
+  }
+
+  if (researchState === "failed") {
+    return (
+      <div className="mt-8">
+        <h3 className="text-[11px] uppercase tracking-[0.2em] text-muted">
+          Research
+        </h3>
+        <p className="mt-3 text-[14px] leading-relaxed text-neutral-700">
+          Research unavailable.
+        </p>
+        <p className="mt-2 text-[14px] leading-relaxed text-neutral-600">
+          Identification above remains based on the photo only.
+        </p>
+      </div>
+    );
+  }
+
+  if (!researchResult) {
+    return null;
+  }
+
+  const enhanced = researchResult.merged_identity;
+  const showEnhanced = researchAddsResolvedFields(visionResult, enhanced);
+  const documented = researchResult.candidates.filter(
+    (candidate) => candidate.existence === "documented",
+  );
+  const { featured, extra } = selectDisplaySources(researchResult.evidence, {
+    vision: visionResult,
+  });
+
+  return (
+    <div className="mt-8">
+      <h3 className="text-[11px] uppercase tracking-[0.2em] text-muted">
+        Research
+      </h3>
+
+      {showEnhanced ? (
+        <div className="mt-4">
+          <p className="text-[11px] uppercase tracking-[0.2em] text-muted">
+            Research-enhanced identification
+          </p>
+          <p className="mt-2 font-serif text-[1.25rem] leading-tight tracking-tight text-foreground">
+            {visionTitle(enhanced)}
+          </p>
+        </div>
+      ) : (
+        <p className="mt-3 text-[14px] leading-relaxed text-neutral-700">
+          {researchStatusLabel(researchResult.status)}
+        </p>
+      )}
+
+      {documented.length > 0 ? (
+        <ul className="mt-4 space-y-3">
+          {documented.map((candidate) => (
+            <li
+              key={candidate.candidate_id}
+              className="text-[14px] leading-relaxed text-neutral-700"
+            >
+              <p className="text-foreground">{candidate.canonical_name}</p>
+              {candidate.reasons[0] ? (
+                <p className="mt-1 text-neutral-600">{candidate.reasons[0]}</p>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+
+      {featured.length > 0 ? (
+        <SourceList sources={featured} extra={extra} />
+      ) : null}
+    </div>
+  );
+}
+
+function SourceList({
+  sources,
+  extra,
+}: {
+  sources: ReturnType<typeof selectDisplaySources>["featured"];
+  extra: ReturnType<typeof selectDisplaySources>["extra"];
+}) {
+  const [showAll, setShowAll] = useState(false);
+  const visible = showAll ? [...sources, ...extra] : sources;
+
+  return (
+    <div className="mt-7">
+      <h3 className="text-[11px] uppercase tracking-[0.2em] text-muted">
+        Sources
+      </h3>
+      <ul className="mt-3 space-y-4">
+        {visible.map((source) => (
+          <li key={source.url} className="text-[14px] leading-relaxed text-neutral-700">
+            <p className="text-foreground">{source.title}</p>
+            <p className="mt-1 text-[12px] uppercase tracking-[0.16em] text-muted">
+              {SOURCE_TYPE_LABELS[source.type]} · Tier {source.tier}
+            </p>
+            {source.notes ? (
+              <p className="mt-1 text-neutral-600">{source.notes}</p>
+            ) : null}
+            <a
+              className="mt-1 inline-block text-[13px] text-neutral-700 underline decoration-neutral-300 underline-offset-4"
+              href={source.url}
+              target="_blank"
+              rel="noreferrer"
+            >
+              View source
+            </a>
+          </li>
+        ))}
+      </ul>
+      {extra.length > 0 ? (
+        <button
+          type="button"
+          className="mt-4 text-[13px] text-neutral-700 underline decoration-neutral-300 underline-offset-4"
+          onClick={() => setShowAll((current) => !current)}
+        >
+          {showAll ? "Show fewer sources" : "Show all research sources"}
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+const SOURCE_TYPE_LABELS = {
+  official: "Official",
+  archive: "Archive",
+  retailer: "Retailer",
+  community: "Community",
+  unverified: "Unverified",
+} as const;
+
+function visionTitle(result: IdentificationResultType): string {
+  if (result.brand) {
+    return (
+      formatCanonicalName({
+        brand: result.brand,
+        series: result.series,
+        edition: result.edition,
+        variant: result.variant,
+      }) || result.deck_name || "Identified deck"
+    );
+  }
+
+  if (result.status === "unknown") {
+    return result.deck_name ?? "Unable to identify this deck reliably";
+  }
+  if (result.status === "ambiguous") {
+    return result.deck_name ?? "More than one match is possible";
+  }
+  return result.deck_name ?? "Identified deck";
+}
+
+function identityLabel(
   brand: string | null,
   series: string | null,
   edition: string | null,
+  variant?: string | null,
 ): string | null {
-  const parts = [brand, series, edition].filter((part): part is string => Boolean(part));
+  if (brand) {
+    return formatCanonicalName({ brand, series, edition, variant });
+  }
+  const parts = [brand, series, edition, variant].filter((part): part is string => Boolean(part));
   return parts.length > 0 ? parts.join(" · ") : null;
+}
+
+function researchStatusLabel(status: ResearchResultPayload["status"]): string {
+  if (status === "resolved") {
+    return "Research complete";
+  }
+  if (status === "ambiguous" || status === "candidates_found") {
+    return "Candidates found";
+  }
+  return "Research complete";
 }

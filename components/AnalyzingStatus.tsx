@@ -1,4 +1,8 @@
-export function AnalyzingStatus() {
+export function AnalyzingStatus({
+  label = "Analyzing deck",
+}: {
+  label?: string;
+}) {
   return (
     <div
       className="mt-8 text-center"
@@ -7,7 +11,7 @@ export function AnalyzingStatus() {
       aria-busy="true"
     >
       <p className="text-[11px] uppercase tracking-[0.22em] text-muted">
-        Analyzing deck
+        {label}
       </p>
       <div className="mx-auto mt-4 h-px w-24 overflow-hidden bg-neutral-200">
         <div className="h-full w-1/3 bg-foreground animate-analyze" />
